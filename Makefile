@@ -1,8 +1,11 @@
-CFLAGS = -Wall -Wextra -pedantic -ggdb
+CFLAGS = -Wall -Wextra -Wconversion -pedantic -std=gnu11 -ggdb
 
 main: main.c
 
-.PHONY = clean
+run: main
+	./main
 
 clean:
 	rm main
+
+.PHONY = clean run
