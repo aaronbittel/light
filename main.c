@@ -88,15 +88,15 @@ void table_free(Table* table) {
 }
 
 void serialize_row(Row* src, void* dst) {
-    memcpy((char*)dst+ID_OFFSET,       &(src->id), ID_SIZE);
-    memcpy((char*)dst+USERNAME_OFFSET, &(src->id), USERNAME_SIZE);
-    memcpy((char*)dst+EMAIL_OFFSET,    &(src->id), EMAIL_SIZE);
+    memcpy((char*)dst+ID_OFFSET,       &(src->id),       ID_SIZE);
+    memcpy((char*)dst+USERNAME_OFFSET, &(src->username), USERNAME_SIZE);
+    memcpy((char*)dst+EMAIL_OFFSET,    &(src->email),    EMAIL_SIZE);
 }
 
 void deserialize_row(Row* dst, void* src) {
-    memcpy(&(dst->id), (char*)src+ID_OFFSET,       ID_SIZE);
-    memcpy(&(dst->id), (char*)src+USERNAME_OFFSET, USERNAME_SIZE);
-    memcpy(&(dst->id), (char*)src+EMAIL_OFFSET,    EMAIL_SIZE);
+    memcpy(&(dst->id),       (char*)src+ID_OFFSET,       ID_SIZE);
+    memcpy(&(dst->username), (char*)src+USERNAME_OFFSET, USERNAME_SIZE);
+    memcpy(&(dst->email),    (char*)src+EMAIL_OFFSET,    EMAIL_SIZE);
 }
 
 typedef enum {
