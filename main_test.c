@@ -184,5 +184,55 @@ bool terminal_expect(Terminal* terminal, const char* expected) {
     return true;
 }
 
+
+void test_empty_table(Terminal terminal) {
+    SEND(terminal, "select");
+    EXPECT(terminal, "db > Empty table.");
+    EXPECT(terminal, "Executed.");
+}
+
+void test_insert_and_select(Terminal terminal) {
+    SEND(terminal, "insert 1 bob bob@example.com");
+    EXPECT(terminal, "db > Executed.");
+
+    SEND(terminal, "select");
+    EXPECT(terminal, "db > Rows:");
+    EXPECT(terminal, "  Row: id=1, username=bob, email=bob@example.com");
+    EXPECT(terminal, "Executed.");
+}
+
+void test_full_table(Terminal terminal) {
+    const int MAX_ROWS = 1301;
+
+    for (int i = 0; i < MAX_ROWS; i++) {
+        SEND(terminal, "insert 1 bob bob@example.com");
+    }
+
+    for (int i = 0; i < MAX_ROWS-1; i++) {
+        EXPECT(terminal, "db > Executed.");
+    }
+
+    EXPECT(terminal, "db > Error: Table full.");
+}
+
+void test_inserting_strings_with_maximum_length(Terminal terminal) {
+    char username_maxlen[COLUMN_USERNAME_SIZE+1] = {0};
+    memset(username_maxlen, 'a', COLUMN_USERNAME_SIZE);
+
+    char email_maxlen[COLUMN_EMAIL_SIZE+1] = {0};
+    memset(email_maxlen, 'b', COLUMN_EMAIL_SIZE);
+
+    SEND(terminal, "insert 1 %s %s", username_maxlen, email_maxlen);
+    EXPECT(terminal, "db > Executed.");
+
+    SEND(terminal, "select");
+    EXPECT(terminal, "db > Rows:");
+    EXPECT(terminal, "  Row: id=1, username=%s, email=%s", username_maxlen, email_maxlen);
+    EXPECT(terminal, "Executed.");
+}
 int main() {
+    RUN_TEST(test_empty_table);
+    RUN_TEST(test_insert_and_select);
+    RUN_TEST(test_full_table);
+    RUN_TEST(test_inserting_strings_with_maximum_length);
 }
