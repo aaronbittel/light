@@ -58,6 +58,8 @@
     printf("\033[1A\r\033[2KRunning %s... \033[32mPASSED\033[0m\n", #test); \
 } while (0)
 
+#define ARRAY_LEN(x) (sizeof(x) / sizeof((x)[0]))
+
 typedef struct {
     char* line;
     size_t cap;
@@ -230,9 +232,63 @@ void test_inserting_strings_with_maximum_length(Terminal terminal) {
     EXPECT(terminal, "  Row: id=1, username=%s, email=%s", username_maxlen, email_maxlen);
     EXPECT(terminal, "Executed.");
 }
+
+void test_error_string_too_long(Terminal terminal) {
+    char username_toolong[COLUMN_USERNAME_SIZE+2] = {0};
+    memset(username_toolong, 'a', COLUMN_USERNAME_SIZE+1);
+
+    char email_toolong[COLUMN_EMAIL_SIZE+2] = {0};
+    memset(email_toolong, 'b', COLUMN_EMAIL_SIZE+1);
+
+    SEND(terminal, "insert 1 %s %s", username_toolong, email_toolong);
+    EXPECT(terminal, "db > String is too long.");
+}
+
+void test_insert_invalid_syntax(Terminal terminal) {
+    const char *inputs[] = {
+        "insert",
+        "insert 1",
+        "insert 1 bob"
+    };
+
+    for (size_t i = 0; i < ARRAY_LEN(inputs); i++) {
+        SEND(terminal, "%s", inputs[i]);
+        EXPECT(terminal, "db > Syntax error. Could not parse statement.");
+    }
+}
+
+void test_error_invalid_number(Terminal terminal) {
+    const char *inputs[] = {
+        "a",
+        "-1",
+        "9223372036854775808",   // LONG_MAX + 1 (overflow)
+        "-9223372036854775809"   // LONG_MIN - 1 (underflow)
+    };
+
+    for (size_t i = 0; i < ARRAY_LEN(inputs); i++) {
+        SEND(terminal, "insert %s bob bob@example.com", inputs[i]);
+        EXPECT(terminal, "db > Invalid number.");
+    }
+}
+
+void test_id_long_max(Terminal terminal) {
+    SEND(terminal, "insert 9223372036854775807 bob bob@example.com");
+    EXPECT(terminal, "db > Executed.");
+}
+
+void test_insert_with_spaces(Terminal terminal) {
+    SEND(terminal, "    insert   1     bob      bob@example.com");
+    EXPECT(terminal, "db > Executed.");
+}
+
 int main() {
     RUN_TEST(test_empty_table);
     RUN_TEST(test_insert_and_select);
     RUN_TEST(test_full_table);
     RUN_TEST(test_inserting_strings_with_maximum_length);
+    RUN_TEST(test_insert_invalid_syntax);
+    RUN_TEST(test_error_string_too_long);
+    RUN_TEST(test_error_invalid_number);
+    RUN_TEST(test_id_long_max);
+    RUN_TEST(test_insert_with_spaces);
 }

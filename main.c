@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -101,23 +102,54 @@ void deserialize_row(Row* dst, void* src) {
 
 typedef enum {
     PREPARE_SUCCESS,
+    PREPARE_STRING_TOO_LONG,
+    PREPARE_INVALID_NUMBER,
     PREPARE_SYNTAX_ERROR,
     PREPARE_UNREGONIZED_COMMAND
 } PrepareResult;
 
 PrepareResult prepare_statement(Statement* stmt, InputBuffer ib) {
-    if (strncmp(ib.buf, "insert", 6) == 0) {
-        int args_matched = sscanf(ib.buf, "insert %u %s %s",
-                &(stmt->row_to_insert.id),
-                stmt->row_to_insert.username,
-                stmt->row_to_insert.email);
+    while (ib.len > 0 && *ib.buf == ' ') {
+        ib.buf += 1;
+        ib.len -= 1;
+    }
 
-        if (args_matched == 3) {
-            stmt->type = STATEMENT_INSERT;
-            return PREPARE_SUCCESS;
+    if (strncmp(ib.buf, "insert", 6) == 0) {
+        assert(strtok(ib.buf, " ") != NULL); // unreachable
+
+        char* idtok = strtok(NULL, " ");
+        if (idtok == NULL) {
+            return PREPARE_SYNTAX_ERROR;
         }
 
-        return PREPARE_SYNTAX_ERROR;
+        char* endptr;
+        long id = strtol(idtok, &endptr, 10);
+        if (*endptr != '\0' || id < 0 || errno == ERANGE) {
+            return PREPARE_INVALID_NUMBER;
+        }
+        stmt->row_to_insert.id = (u32)id;
+
+        char* usernametok = strtok(NULL, " ");
+        if (usernametok == NULL) {
+            return PREPARE_SYNTAX_ERROR;
+        }
+
+        if (strlen(usernametok) > COLUMN_USERNAME_SIZE) {
+            return PREPARE_STRING_TOO_LONG;
+        }
+        strncpy(stmt->row_to_insert.username, usernametok, strlen(usernametok));
+
+        char* emailtok = strtok(NULL, " ");
+        if (emailtok == NULL) {
+            return PREPARE_SYNTAX_ERROR;
+        }
+
+        if (strlen(emailtok) > COLUMN_EMAIL_SIZE) {
+            return PREPARE_STRING_TOO_LONG;
+        }
+        strncpy(stmt->row_to_insert.email, emailtok, strlen(emailtok));
+
+        return PREPARE_SUCCESS;
     }
 
 
@@ -225,6 +257,12 @@ int main() {
                         printf("Error: Table full.\n");
                         break;
                 }
+                break;
+            case PREPARE_STRING_TOO_LONG:
+                printf("String is too long.\n");
+                break;
+            case PREPARE_INVALID_NUMBER:
+                printf("Invalid number.\n");
                 break;
             case PREPARE_SYNTAX_ERROR:
                 printf("Syntax error. Could not parse statement.\n");
