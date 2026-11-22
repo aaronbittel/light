@@ -222,13 +222,13 @@ void test_full_table(Terminal terminal) {
 
     for (int i = 0; i < MAX_ROWS; i++) {
         SEND(terminal, "insert 1 bob bob@example.com");
-    }
 
-    for (int i = 0; i < MAX_ROWS-1; i++) {
-        EXPECT(terminal, "db > Executed.");
+        if (i < MAX_ROWS - 1) {
+            EXPECT(terminal, "db > Executed.");
+        } else {
+            EXPECT(terminal, "db > Error: Table full.");
+        }
     }
-
-    EXPECT(terminal, "db > Error: Table full.");
 }
 
 void test_inserting_strings_with_maximum_length(Terminal terminal) {

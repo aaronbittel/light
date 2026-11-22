@@ -71,17 +71,22 @@ const u32 TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
 
 typedef struct {
     int fd;
+    // FIXME: needed to clean up temporary file, maybe use mkstemp instead?
+    FILE* tmp;
     size_t filesize;
     void* pages[TABLE_MAX_PAGES];
 } Pager;
 
 Pager* pager_open(const char *filename) {
-    Pager* pager = calloc(1, sizeof(Pager));
-
     int fd;
+    FILE* tmp = NULL;
 
     if (filename == NULL) {
-        FILE* tmp = tmpfile();
+        tmp = tmpfile();
+        if (tmp == NULL) {
+            perror("pager_open: tmpfile");
+            return NULL;
+        }
         fd = fileno(tmp);
         if (fd == -1) {
             perror("db_open: fileno");
@@ -101,26 +106,41 @@ Pager* pager_open(const char *filename) {
         return NULL;
     }
 
+    Pager* pager = calloc(1, sizeof(Pager));
+    if (pager == NULL) {
+        perror("pager_open: calloc");
+        return NULL;
+    }
+
     pager->fd = fd;
+    pager->tmp = tmp;
     pager->filesize = (size_t)filesize;
 
     return pager;
 }
 
-void* get_page(Pager* pager, size_t page_num) {
-    size_t file_page_count = pager->filesize / PAGE_SIZE;
-    if (pager->filesize % PAGE_SIZE != 0) {
-        file_page_count += 1;
+void* get_page(Pager* pager, u32 page_num) {
+    if (page_num >= TABLE_MAX_PAGES) {
+        fprintf(
+                stderr,
+                "ERROR: tried to fetch page number out of bounds. %d > %d\n",
+                page_num, TABLE_MAX_PAGES);
+        return NULL;
     }
 
     if (pager->pages[page_num] != NULL) {
         return pager->pages[page_num];
     }
 
-    pager->pages[page_num] = malloc(PAGE_SIZE);
-    if (pager->pages[page_num] == NULL) {
-        perror("get_page: malloc");
+    void* page = calloc(1, PAGE_SIZE);
+    if (page == NULL) {
+        perror("get_page: calloc");
         return NULL;
+    }
+
+    size_t file_page_count = pager->filesize / PAGE_SIZE;
+    if (pager->filesize % PAGE_SIZE != 0) {
+        file_page_count += 1;
     }
 
     if (page_num < file_page_count) {
@@ -128,20 +148,27 @@ void* get_page(Pager* pager, size_t page_num) {
             perror("get_page: lseek");
             return NULL;
         }
-        ssize_t bytes_read = read(pager->fd, pager->pages[page_num], PAGE_SIZE);
+        ssize_t bytes_read = read(pager->fd, page, PAGE_SIZE);
         if (bytes_read == -1) {
             perror("get_page: read");
             return NULL;
         }
     }
 
+    pager->pages[page_num] = page;
+
     return pager->pages[page_num];
 }
 
 void pager_free(Pager* pager) {
-    for (size_t i = 0; i < TABLE_MAX_ROWS; i++) {
-        if (pager->pages[i] == NULL) break;
-        free(pager->pages[i]);
+    for (size_t i = 0; i < TABLE_MAX_PAGES; i++) {
+        if (pager->pages[i] != NULL) {
+            free(pager->pages[i]);
+        }
+    }
+    close(pager->fd);
+    if (pager->tmp != NULL) {
+        fclose(pager->tmp);
     }
     free(pager);
 }
@@ -301,7 +328,7 @@ PrepareResult prepare_statement(Statement* stmt, InputBuffer ib) {
 }
 
 void* row_slot(Table* table, u32 row_num) {
-    size_t page_num = row_num / ROWS_PER_PAGE;
+    u32 page_num = row_num / ROWS_PER_PAGE;
 
     void* page = get_page(table->pager, page_num);
     if (page == NULL) {
@@ -341,7 +368,10 @@ ExecuteResult execute_select(Table* table) {
     printf("Rows:\n");
     Row row = {0};
     for (u32 i = 0; i < table->num_rows; ++i) {
-        deserialize_row(&row, row_slot(table, i));
+        void* src = row_slot(table, i);
+        // TODO: how to handle this? add new ExecuteResult type?
+        assert(src != NULL);
+        deserialize_row(&row, src);
         printf("  "); row_print(row);
     }
 
@@ -376,7 +406,6 @@ int main(int argc, char** argv) {
         printf("db > ");
 
         if (!ib_read_line(&ib)) {
-            ib_free(&ib);
             fprintf(stderr, "ERROR: reading line\n");
             exit_code = EXIT_FAILURE;
             break;
