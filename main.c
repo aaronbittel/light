@@ -68,8 +68,12 @@ const u32 ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
 const u32 TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
 
 typedef struct {
-    u32 num_rows;
     void* pages[TABLE_MAX_PAGES];
+} Pager;
+
+typedef struct {
+    u32 num_rows;
+    Pager* pager;
 } Table;
 
 Table* table_init() {
@@ -78,12 +82,15 @@ Table* table_init() {
         perror("calloc()");
         return NULL;
     }
+
+    table->pager = calloc(1, sizeof(Pager));
+
     return table;
 }
 
 void table_free(Table* table) {
     for (size_t i = 0; i < TABLE_MAX_PAGES; i++) {
-        free(table->pages[i]);
+        free(table->pager->pages[i]);
     }
     free(table);
 }
@@ -173,11 +180,11 @@ void* row_slot(Table* table, u32 row_num) {
     size_t page_num = row_num / ROWS_PER_PAGE;
     size_t page_index = row_num % ROWS_PER_PAGE;
 
-    if (table->pages[page_num] == NULL) {
-        table->pages[page_num] = malloc(PAGE_SIZE);
+    if (table->pager->pages[page_num] == NULL) {
+        table->pager->pages[page_num] = malloc(PAGE_SIZE);
     }
 
-    return (char*)table->pages[page_num] + page_index * ROW_SIZE;
+    return (char*)table->pager->pages[page_num] + page_index * ROW_SIZE;
 }
 
 void row_print(Row row) {
