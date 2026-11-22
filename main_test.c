@@ -19,28 +19,27 @@
     }                                                                            \
 } while (0)
 
-#define SEND(t, fmt, ...) \
-    do { \
-        char message[1024]; \
-        snprintf(message, sizeof(message), fmt, ##__VA_ARGS__); \
-        if (!terminal_send(&(t), message)) { \
+#define SEND(t, fmt, ...)                                           \
+    do {                                                            \
+        char message[1024];                                         \
+        snprintf(message, sizeof(message), fmt, ##__VA_ARGS__);     \
+        if (!terminal_send(&(t), message)) {                        \
             fprintf(stderr, "  Failed to send: \"%s\"\n", message); \
-            exit(EXIT_FAILURE); \
-        } \
+            exit(EXIT_FAILURE);                                     \
+        }                                                           \
     } while (0)
 
-#define EXPECT(t, fmt, ...) \
-    do { \
-        char expected[1024]; \
+#define EXPECT(t, fmt, ...)                                       \
+    do {                                                          \
+        char expected[1024];                                      \
         snprintf(expected, sizeof(expected), fmt, ##__VA_ARGS__); \
-        if (!terminal_expect(&(t), expected)) { \
-            fprintf(stderr, "  Expected: \"%s\"\n", expected); \
-            exit(EXIT_FAILURE); \
-        } \
+        if (!terminal_expect(&(t), expected)) {                   \
+            exit(EXIT_FAILURE);                                   \
+        }                                                         \
     } while (0)
 
 #define RUN_TEST(test) do {                                                 \
-    printf("Running %s... \033[31mFAILED\033[0m\n", #test);                  \
+    printf("Running %s... \033[31mFAILED\033[0m\n", #test);                 \
     fflush(stdout);                                                         \
                                                                             \
     Terminal terminal = {0};                                                \
@@ -173,8 +172,8 @@ bool terminal_expect(Terminal* terminal, const char* expected) {
     if (terminal->line_buffer.len != expected_len ||
             strncmp(expected, terminal->line_buffer.line, expected_len) != 0) {
         fprintf(stderr,
-                "Expected: \"%.*s\"\n"
-                "Received: \"%.*s\"\n",
+                "  Expected: \"%.*s\"\n"
+                "  Received: \"%.*s\"\n",
                 (int)expected_len,
                 expected,
                 (int)terminal->line_buffer.len,
