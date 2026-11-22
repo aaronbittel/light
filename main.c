@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define u32 uint32_t
 
@@ -68,31 +70,153 @@ const u32 ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
 const u32 TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
 
 typedef struct {
+    int fd;
+    size_t filesize;
     void* pages[TABLE_MAX_PAGES];
 } Pager;
+
+Pager* pager_open(const char *filename) {
+    Pager* pager = calloc(1, sizeof(Pager));
+
+    int fd;
+
+    if (filename == NULL) {
+        FILE* tmp = tmpfile();
+        fd = fileno(tmp);
+        if (fd == -1) {
+            perror("db_open: fileno");
+            return NULL;
+        }
+    } else {
+        fd = open(filename, O_CREAT | O_RDWR, S_IWUSR | S_IRUSR);
+        if (fd == -1) {
+            perror("db_open: open");
+            return NULL;
+        }
+    }
+
+    off_t filesize = lseek(fd, 0, SEEK_END);
+    if (filesize == -1) {
+        perror("db_open: lseek");
+        return NULL;
+    }
+
+    pager->fd = fd;
+    pager->filesize = (size_t)filesize;
+
+    return pager;
+}
+
+void* get_page(Pager* pager, size_t page_num) {
+    size_t file_page_count = pager->filesize / PAGE_SIZE;
+    if (pager->filesize % PAGE_SIZE != 0) {
+        file_page_count += 1;
+    }
+
+    if (pager->pages[page_num] != NULL) {
+        return pager->pages[page_num];
+    }
+
+    pager->pages[page_num] = malloc(PAGE_SIZE);
+    if (pager->pages[page_num] == NULL) {
+        perror("get_page: malloc");
+        return NULL;
+    }
+
+    if (page_num < file_page_count) {
+        if (lseek(pager->fd, (off_t)(page_num*PAGE_SIZE), SEEK_SET) == -1)  {
+            perror("get_page: lseek");
+            return NULL;
+        }
+        ssize_t bytes_read = read(pager->fd, pager->pages[page_num], PAGE_SIZE);
+        if (bytes_read == -1) {
+            perror("get_page: read");
+            return NULL;
+        }
+    }
+
+    return pager->pages[page_num];
+}
+
+void pager_free(Pager* pager) {
+    for (size_t i = 0; i < TABLE_MAX_ROWS; i++) {
+        if (pager->pages[i] == NULL) break;
+        free(pager->pages[i]);
+    }
+    free(pager);
+}
 
 typedef struct {
     u32 num_rows;
     Pager* pager;
 } Table;
 
-Table* table_init() {
+Table* db_open(const char* filename) {
+    Pager* pager = pager_open(filename);
+    if (pager == NULL) {
+        return NULL;
+    }
+
     Table* table = calloc(1, sizeof(Table));
     if (table == NULL) {
         perror("calloc()");
         return NULL;
     }
 
-    table->pager = calloc(1, sizeof(Pager));
+    table->pager = pager;
+    table->num_rows = (u32)pager->filesize / ROW_SIZE;
 
     return table;
 }
 
-void table_free(Table* table) {
-    for (size_t i = 0; i < TABLE_MAX_PAGES; i++) {
-        free(table->pager->pages[i]);
+bool db_close(Table* table) {
+    Pager* pager = table->pager;
+    bool success = true;
+
+    if (lseek(pager->fd, 0, SEEK_SET) == -1) {
+        perror("db_close: lseek");
+        return false;
     }
+
+    size_t full_pages_count = table->num_rows/ROWS_PER_PAGE;
+    for (size_t i = 0; i < full_pages_count; i++) {
+        void* page = pager->pages[i];
+        if (page == NULL) {
+            if (lseek(pager->fd, PAGE_SIZE, SEEK_CUR) == -1) {
+                perror("db_close: lseek");
+                return false;
+            }
+            continue;
+        }
+        ssize_t bytes_written = write(pager->fd, page, PAGE_SIZE);
+        if (bytes_written == -1) {
+            perror("db_close: write");
+            success = false;
+            break;
+        }
+        // TODO: handle less bytes written
+        assert(bytes_written == PAGE_SIZE);
+    }
+
+    size_t last_page_row_count = table->num_rows % ROWS_PER_PAGE;
+    if (last_page_row_count != 0) {
+        if (pager->pages[full_pages_count] != NULL) {
+            ssize_t bytes_written = write(
+                    pager->fd,
+                    pager->pages[full_pages_count],
+                    last_page_row_count*ROW_SIZE);
+            if (bytes_written == -1) {
+                perror("db_close: write");
+                success = false;
+            }
+            // TODO: handle less bytes written
+            assert((size_t)bytes_written == last_page_row_count*ROW_SIZE);
+        }
+    }
+
+    pager_free(table->pager);
     free(table);
+    return success;
 }
 
 void serialize_row(Row* src, void* dst) {
@@ -178,13 +302,15 @@ PrepareResult prepare_statement(Statement* stmt, InputBuffer ib) {
 
 void* row_slot(Table* table, u32 row_num) {
     size_t page_num = row_num / ROWS_PER_PAGE;
-    size_t page_index = row_num % ROWS_PER_PAGE;
 
-    if (table->pager->pages[page_num] == NULL) {
-        table->pager->pages[page_num] = malloc(PAGE_SIZE);
+    void* page = get_page(table->pager, page_num);
+    if (page == NULL) {
+        return NULL;
     }
 
-    return (char*)table->pager->pages[page_num] + page_index * ROW_SIZE;
+    size_t page_index = row_num % ROWS_PER_PAGE;
+
+    return (char*)page + page_index * ROW_SIZE;
 }
 
 void row_print(Row row) {
@@ -231,8 +357,13 @@ ExecuteResult execute_statement(Statement stmt, Table* table) {
     assert(false && "unreachable");
 }
 
-int main() {
-    Table* table = table_init();
+int main(int argc, char** argv) {
+    char* filename = NULL;
+    if (argc >= 2) {
+        filename = argv[1];
+    }
+
+    Table* table = db_open(filename);
     if (table == NULL) {
         fprintf(stderr, "ERROR: could not initialize table\n");
         return 1;
@@ -292,6 +423,9 @@ int main() {
     }
 
     ib_free(&ib);
-    table_free(table);
+    if (!db_close(table)) {
+        fprintf(stderr, "ERROR: closing db\n");
+        exit_code = EXIT_FAILURE;
+    }
     return exit_code;
 }

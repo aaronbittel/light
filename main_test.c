@@ -11,6 +11,7 @@
 
 #define COLUMN_USERNAME_SIZE 32
 #define COLUMN_EMAIL_SIZE 256
+#define TEST_DB "test_db.light"
 
 #define CHECK(expr) do {                                                         \
     if (!(expr)) {                                                               \
@@ -39,11 +40,12 @@
     } while (0)
 
 #define RUN_TEST(test) do {                                                 \
+    unlink_test_db();                                                       \
     printf("Running %s... \033[31mFAILED\033[0m\n", #test);                 \
     fflush(stdout);                                                         \
                                                                             \
     Terminal terminal = {0};                                                \
-    CHECK(terminal_start(&terminal, "./main"));                             \
+    CHECK(terminal_start(&terminal, "./main", TEST_DB));                    \
                                                                             \
     test(terminal);                                                         \
                                                                             \
@@ -54,6 +56,14 @@
     CHECK(WIFEXITED(status));                                               \
     CHECK(WEXITSTATUS(status) == 0);                                        \
                                                                             \
+    printf("\033[1A\r\033[2KRunning %s... \033[32mPASSED\033[0m\n", #test); \
+} while (0)
+
+#define RUN_TEST_MANUAL(test) do {                                          \
+    unlink_test_db();                                                       \
+    printf("Running %s... \033[31mFAILED\033[0m\n", #test);                 \
+    fflush(stdout);                                                         \
+    test();                                                                 \
     printf("\033[1A\r\033[2KRunning %s... \033[32mPASSED\033[0m\n", #test); \
 } while (0)
 
@@ -73,7 +83,7 @@ typedef struct {
     LineBuffer line_buffer;
 } Terminal;
 
-bool terminal_start(Terminal* terminal, const char* program) {
+bool terminal_start(Terminal* terminal, const char* program, const char* filename) {
     struct termios term;
     tcgetattr(STDIN_FILENO, &term);
     term.c_lflag &= ~(tcflag_t)ECHO;
@@ -88,7 +98,7 @@ bool terminal_start(Terminal* terminal, const char* program) {
     }
 
     if (pid == 0) {
-        execl(program, program, NULL);
+        execl(program, program, filename, NULL);
         perror("execl");
         _exit(EXIT_FAILURE);
     } else {
@@ -185,6 +195,11 @@ bool terminal_expect(Terminal* terminal, const char* expected) {
     return true;
 }
 
+void unlink_test_db() {
+    if (unlink(TEST_DB) == -1 && errno != ENOENT) {
+        perror("unlink_test_db: unlink");
+    }
+}
 
 void test_empty_table(Terminal terminal) {
     SEND(terminal, "select");
@@ -284,6 +299,36 @@ void test_insert_with_spaces(Terminal terminal) {
     EXPECT(terminal, "db > Executed.");
 }
 
+void test_keeps_data_after_closing_connection(void) {
+    Terminal terminal1 = {0};
+    CHECK(terminal_start(&terminal1, "./main", TEST_DB));
+
+    SEND(terminal1, "insert 1 bob bob@example.com");
+    EXPECT(terminal1, "db > Executed.");
+
+    SEND(terminal1, ".exit");
+    EXPECT(terminal1, "db > ");
+
+    int status1 = terminal_finish(&terminal1);
+    CHECK(WIFEXITED(status1));
+    CHECK(WEXITSTATUS(status1) == 0);
+
+    Terminal terminal2 = {0};
+    CHECK(terminal_start(&terminal2, "./main", TEST_DB));
+
+    SEND(terminal2, "select");
+    EXPECT(terminal2, "db > Rows:");
+    EXPECT(terminal2, "  Row: id=1, username=bob, email=bob@example.com");
+    EXPECT(terminal2, "Executed.");
+
+    SEND(terminal2, ".exit");
+    EXPECT(terminal2, "db > ");
+
+    int status2 = terminal_finish(&terminal2);
+    CHECK(WIFEXITED(status2));
+    CHECK(WEXITSTATUS(status2) == 0);
+}
+
 int main() {
     RUN_TEST(test_empty_table);
     RUN_TEST(test_insert_and_select);
@@ -294,4 +339,5 @@ int main() {
     RUN_TEST(test_error_invalid_number);
     RUN_TEST(test_id_max_u32);
     RUN_TEST(test_insert_with_spaces);
+    RUN_TEST_MANUAL(test_keeps_data_after_closing_connection);
 }
