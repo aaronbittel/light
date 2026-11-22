@@ -104,6 +104,7 @@ typedef enum {
     PREPARE_SUCCESS,
     PREPARE_STRING_TOO_LONG,
     PREPARE_INVALID_NUMBER,
+    PREPARE_NEGATIVE_ID,
     PREPARE_SYNTAX_ERROR,
     PREPARE_UNREGONIZED_COMMAND
 } PrepareResult;
@@ -123,8 +124,15 @@ PrepareResult prepare_statement(Statement* stmt, InputBuffer ib) {
         }
 
         char* endptr;
+        errno = 0;
         long id = strtol(idtok, &endptr, 10);
-        if (*endptr != '\0' || id < 0 || errno == ERANGE) {
+        if (*endptr != '\0' || errno == ERANGE) {
+            return PREPARE_INVALID_NUMBER;
+        }
+        if (id < 0) {
+            return PREPARE_NEGATIVE_ID;
+        }
+        if (id > UINT32_MAX) {
             return PREPARE_INVALID_NUMBER;
         }
         stmt->row_to_insert.id = (u32)id;
@@ -263,6 +271,9 @@ int main() {
                 break;
             case PREPARE_INVALID_NUMBER:
                 printf("Invalid number.\n");
+                break;
+            case PREPARE_NEGATIVE_ID:
+                printf("ID must be positive.\n");
                 break;
             case PREPARE_SYNTAX_ERROR:
                 printf("Syntax error. Could not parse statement.\n");

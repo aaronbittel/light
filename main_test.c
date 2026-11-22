@@ -259,7 +259,8 @@ void test_insert_invalid_syntax(Terminal terminal) {
 void test_error_invalid_number(Terminal terminal) {
     const char *inputs[] = {
         "a",
-        "-1",
+        "125sdf",
+        "4294967296",            // UINT32_MAX + 1 (storing as u32)
         "9223372036854775808",   // LONG_MAX + 1 (overflow)
         "-9223372036854775809"   // LONG_MIN - 1 (underflow)
     };
@@ -268,10 +269,13 @@ void test_error_invalid_number(Terminal terminal) {
         SEND(terminal, "insert %s bob bob@example.com", inputs[i]);
         EXPECT(terminal, "db > Invalid number.");
     }
+
+    SEND(terminal, "insert -1 bob bob@example.com");
+    EXPECT(terminal, "db > ID must be positive.");
 }
 
-void test_id_long_max(Terminal terminal) {
-    SEND(terminal, "insert 9223372036854775807 bob bob@example.com");
+void test_id_max_u32(Terminal terminal) {
+    SEND(terminal, "insert 4294967295 bob bob@example.com");
     EXPECT(terminal, "db > Executed.");
 }
 
@@ -288,6 +292,6 @@ int main() {
     RUN_TEST(test_insert_invalid_syntax);
     RUN_TEST(test_error_string_too_long);
     RUN_TEST(test_error_invalid_number);
-    RUN_TEST(test_id_long_max);
+    RUN_TEST(test_id_max_u32);
     RUN_TEST(test_insert_with_spaces);
 }
