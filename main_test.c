@@ -211,9 +211,17 @@ void test_insert_and_select(Terminal terminal) {
     SEND(terminal, "insert 1 bob bob@example.com");
     EXPECT(terminal, "db > Executed.");
 
+    SEND(terminal, "insert 2 alice alice@example.com");
+    EXPECT(terminal, "db > Executed.");
+
+    SEND(terminal, "insert 3 charlie charlie@example.com");
+    EXPECT(terminal, "db > Executed.");
+
     SEND(terminal, "select");
     EXPECT(terminal, "db > Rows:");
     EXPECT(terminal, "  Row: id=1, username=bob, email=bob@example.com");
+    EXPECT(terminal, "  Row: id=2, username=alice, email=alice@example.com");
+    EXPECT(terminal, "  Row: id=3, username=charlie, email=charlie@example.com");
     EXPECT(terminal, "Executed.");
 }
 

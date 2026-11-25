@@ -246,6 +246,43 @@ bool db_close(Table* table) {
     return success;
 }
 
+typedef struct {
+    Table* table;
+    u32 table_row;
+    bool end_of_table;
+} Cursor;
+
+Cursor* table_start(Table* table) {
+    Cursor* cursor = malloc(sizeof(Cursor));
+    if (cursor == NULL) {
+        return NULL;
+    }
+
+    cursor->table = table;
+    cursor->table_row = 0;
+    cursor->end_of_table = table->num_rows == 0;
+    return cursor;
+}
+
+Cursor* table_end(Table* table) {
+    Cursor* cursor = malloc(sizeof(Cursor));
+    if (cursor == NULL) {
+        return NULL;
+    }
+
+    cursor->table = table;
+    cursor->table_row = table->num_rows;
+    cursor->end_of_table = true;
+    return cursor;
+}
+
+void cursor_advance(Cursor* cursor) {
+    cursor->table_row += 1;
+    if (cursor->table_row >= cursor->table->num_rows) {
+        cursor->end_of_table = true;
+    }
+}
+
 void serialize_row(Row* src, void* dst) {
     memcpy((char*)dst+ID_OFFSET,       &(src->id),       ID_SIZE);
     memcpy((char*)dst+USERNAME_OFFSET, &(src->username), USERNAME_SIZE);
@@ -327,16 +364,15 @@ PrepareResult prepare_statement(Statement* stmt, InputBuffer ib) {
     return PREPARE_UNREGONIZED_COMMAND;
 }
 
-void* row_slot(Table* table, u32 row_num) {
-    u32 page_num = row_num / ROWS_PER_PAGE;
+void* cursor_value(Cursor* cursor) {
+    u32 page_num = cursor->table_row / ROWS_PER_PAGE;
 
-    void* page = get_page(table->pager, page_num);
+    void* page = get_page(cursor->table->pager, page_num);
     if (page == NULL) {
         return NULL;
     }
 
-    size_t page_index = row_num % ROWS_PER_PAGE;
-
+    size_t page_index = cursor->table_row % ROWS_PER_PAGE;
     return (char*)page + page_index * ROW_SIZE;
 }
 
@@ -354,8 +390,20 @@ ExecuteResult execute_insert(Statement stmt, Table* table) {
         return EXECUTE_TABLE_FULL;
     }
 
-    serialize_row(&stmt.row_to_insert, row_slot(table, table->num_rows));
+    Cursor* cursor = table_end(table);
+    assert(cursor != NULL);
+
+    void* dst = cursor_value(cursor);
+    if (dst == NULL) {
+        free(cursor);
+        assert(false && "implement better error");
+    }
+
+    serialize_row(&stmt.row_to_insert, dst);
     table->num_rows++;
+
+    free(cursor);
+
     return EXECUTE_SUCCESS;
 }
 
@@ -365,15 +413,24 @@ ExecuteResult execute_select(Table* table) {
         return EXECUTE_SUCCESS;
     }
 
+    Cursor* cursor = table_start(table);
+    assert (cursor != NULL);
+
     printf("Rows:\n");
     Row row = {0};
-    for (u32 i = 0; i < table->num_rows; ++i) {
-        void* src = row_slot(table, i);
-        // TODO: how to handle this? add new ExecuteResult type?
-        assert(src != NULL);
+
+    while (!(cursor->end_of_table)) {
+        void* src = cursor_value(cursor);
+        if (src == NULL) {
+            free(cursor);
+            assert(false && "implement better error");
+        }
         deserialize_row(&row, src);
         printf("  "); row_print(row);
+        cursor_advance(cursor);
     }
+
+    free(cursor);
 
     return EXECUTE_SUCCESS;
 }
