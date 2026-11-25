@@ -24,7 +24,7 @@
     do {                                                            \
         char message[1024];                                         \
         snprintf(message, sizeof(message), fmt, ##__VA_ARGS__);     \
-        if (!terminal_send(&(t), message)) {                        \
+        if (!terminal_send((t), message)) {                         \
             fprintf(stderr, "  Failed to send: \"%s\"\n", message); \
             exit(EXIT_FAILURE);                                     \
         }                                                           \
@@ -34,7 +34,7 @@
     do {                                                          \
         char expected[1024];                                      \
         snprintf(expected, sizeof(expected), fmt, ##__VA_ARGS__); \
-        if (!terminal_expect(&(t), expected)) {                   \
+        if (!terminal_expect((t), expected)) {                    \
             exit(EXIT_FAILURE);                                   \
         }                                                         \
     } while (0)
@@ -47,10 +47,10 @@
     Terminal terminal = {0};                                                \
     CHECK(terminal_start(&terminal, "./main", TEST_DB));                    \
                                                                             \
-    test(terminal);                                                         \
+    test(&terminal);                                                        \
                                                                             \
-    SEND(terminal, ".exit");                                                \
-    EXPECT(terminal, "db > ");                                              \
+    SEND(&terminal, ".exit");                                               \
+    EXPECT(&terminal, "db > ");                                             \
                                                                             \
     int status = terminal_finish(&terminal);                                \
     CHECK(WIFEXITED(status));                                               \
@@ -142,7 +142,7 @@ int terminal_finish(Terminal* terminal) {
     return status;
 }
 
-bool terminal_send(Terminal *terminal, const char* text) {
+bool terminal_send(Terminal* terminal, const char* text) {
     if (fprintf(terminal->out, "%s\n", text) < 0) {
         fprintf(stderr, "terminal_send: fprintf failed\n");
         return false;
@@ -201,13 +201,13 @@ void unlink_test_db() {
     }
 }
 
-void test_empty_table(Terminal terminal) {
+void test_empty_table(Terminal* terminal) {
     SEND(terminal, "select");
     EXPECT(terminal, "db > Empty table.");
     EXPECT(terminal, "Executed.");
 }
 
-void test_insert_and_select(Terminal terminal) {
+void test_insert_and_select(Terminal* terminal) {
     SEND(terminal, "insert 1 bob bob@example.com");
     EXPECT(terminal, "db > Executed.");
 
@@ -225,7 +225,7 @@ void test_insert_and_select(Terminal terminal) {
     EXPECT(terminal, "Executed.");
 }
 
-void test_full_table(Terminal terminal) {
+void test_full_table(Terminal* terminal) {
     const int MAX_ROWS = 1301;
 
     for (int i = 0; i < MAX_ROWS; i++) {
@@ -239,7 +239,7 @@ void test_full_table(Terminal terminal) {
     }
 }
 
-void test_inserting_strings_with_maximum_length(Terminal terminal) {
+void test_inserting_strings_with_maximum_length(Terminal* terminal) {
     char username_maxlen[COLUMN_USERNAME_SIZE+1] = {0};
     memset(username_maxlen, 'a', COLUMN_USERNAME_SIZE);
 
@@ -255,7 +255,7 @@ void test_inserting_strings_with_maximum_length(Terminal terminal) {
     EXPECT(terminal, "Executed.");
 }
 
-void test_error_string_too_long(Terminal terminal) {
+void test_error_string_too_long(Terminal* terminal) {
     char username_toolong[COLUMN_USERNAME_SIZE+2] = {0};
     memset(username_toolong, 'a', COLUMN_USERNAME_SIZE+1);
 
@@ -266,7 +266,7 @@ void test_error_string_too_long(Terminal terminal) {
     EXPECT(terminal, "db > String is too long.");
 }
 
-void test_insert_invalid_syntax(Terminal terminal) {
+void test_insert_invalid_syntax(Terminal* terminal) {
     const char *inputs[] = {
         "insert",
         "insert 1",
@@ -279,7 +279,7 @@ void test_insert_invalid_syntax(Terminal terminal) {
     }
 }
 
-void test_error_invalid_number(Terminal terminal) {
+void test_error_invalid_number(Terminal* terminal) {
     const char *inputs[] = {
         "a",
         "125sdf",
@@ -297,12 +297,12 @@ void test_error_invalid_number(Terminal terminal) {
     EXPECT(terminal, "db > ID must be positive.");
 }
 
-void test_id_max_u32(Terminal terminal) {
+void test_id_max_u32(Terminal* terminal) {
     SEND(terminal, "insert 4294967295 bob bob@example.com");
     EXPECT(terminal, "db > Executed.");
 }
 
-void test_insert_with_spaces(Terminal terminal) {
+void test_insert_with_spaces(Terminal* terminal) {
     SEND(terminal, "    insert   1     bob      bob@example.com");
     EXPECT(terminal, "db > Executed.");
 }
@@ -311,11 +311,11 @@ void test_keeps_data_after_closing_connection(void) {
     Terminal terminal1 = {0};
     CHECK(terminal_start(&terminal1, "./main", TEST_DB));
 
-    SEND(terminal1, "insert 1 bob bob@example.com");
-    EXPECT(terminal1, "db > Executed.");
+    SEND(&terminal1, "insert 1 bob bob@example.com");
+    EXPECT(&terminal1, "db > Executed.");
 
-    SEND(terminal1, ".exit");
-    EXPECT(terminal1, "db > ");
+    SEND(&terminal1, ".exit");
+    EXPECT(&terminal1, "db > ");
 
     int status1 = terminal_finish(&terminal1);
     CHECK(WIFEXITED(status1));
@@ -324,13 +324,13 @@ void test_keeps_data_after_closing_connection(void) {
     Terminal terminal2 = {0};
     CHECK(terminal_start(&terminal2, "./main", TEST_DB));
 
-    SEND(terminal2, "select");
-    EXPECT(terminal2, "db > Rows:");
-    EXPECT(terminal2, "  Row: id=1, username=bob, email=bob@example.com");
-    EXPECT(terminal2, "Executed.");
+    SEND(&terminal2, "select");
+    EXPECT(&terminal2, "db > Rows:");
+    EXPECT(&terminal2, "  Row: id=1, username=bob, email=bob@example.com");
+    EXPECT(&terminal2, "Executed.");
 
-    SEND(terminal2, ".exit");
-    EXPECT(terminal2, "db > ");
+    SEND(&terminal2, ".exit");
+    EXPECT(&terminal2, "db > ");
 
     int status2 = terminal_finish(&terminal2);
     CHECK(WIFEXITED(status2));
