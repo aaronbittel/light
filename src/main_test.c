@@ -9,9 +9,10 @@
 #include <errno.h>
 #include <stdbool.h>
 
+#define MAIN "bin/main"
+#define TEST_DB "test_db.light"
 #define COLUMN_USERNAME_SIZE 32
 #define COLUMN_EMAIL_SIZE 256
-#define TEST_DB "test_db.light"
 
 #define CHECK(expr) do {                                                         \
     if (!(expr)) {                                                               \
@@ -45,7 +46,7 @@
     fflush(stdout);                                                         \
                                                                             \
     Terminal terminal = {0};                                                \
-    CHECK(terminal_start(&terminal, "./main", TEST_DB));                    \
+    CHECK(terminal_start(&terminal, MAIN, TEST_DB));                    \
                                                                             \
     test(&terminal);                                                        \
                                                                             \
@@ -309,7 +310,7 @@ void test_insert_with_spaces(Terminal* terminal) {
 
 void test_keeps_data_after_closing_connection(void) {
     Terminal terminal1 = {0};
-    CHECK(terminal_start(&terminal1, "./main", TEST_DB));
+    CHECK(terminal_start(&terminal1, MAIN, TEST_DB));
 
     SEND(&terminal1, "insert 1 bob bob@example.com");
     EXPECT(&terminal1, "db > Executed.");
@@ -322,7 +323,7 @@ void test_keeps_data_after_closing_connection(void) {
     CHECK(WEXITSTATUS(status1) == 0);
 
     Terminal terminal2 = {0};
-    CHECK(terminal_start(&terminal2, "./main", TEST_DB));
+    CHECK(terminal_start(&terminal2, MAIN, TEST_DB));
 
     SEND(&terminal2, "select");
     EXPECT(&terminal2, "db > Rows:");

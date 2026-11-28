@@ -2,18 +2,36 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Wconversion -pedantic -std=gnu11 -ggdb
 ANALYZE_FLAGS = -fanalyzer
 
-main: main.c
+NAME  = main
+BIN   = bin
+SRC   = src
+EXEC  = $(BIN)/$(NAME)
+VPATH = $(SRC)
 
-run: main
-	./main
+BIN_SRCS = $(wildcard $(SRC)/*.c)
+BINS = $(patsubst $(SRC)/%.c,$(BIN)/%,$(BIN_SRCS))
 
-analyze: main
-	$(CC) $(CFLAGS) $(ANALYZE_FLAGS) main.c -o main
+all: $(BINS)
 
-hot:
-	ls *.c *.h | entr -c sh -c 'make --no-print-directory -B main_test main && ./main_test'
+$(BIN)/%: $(SRC)/%.c
+	$(CC) $(CFLAGS) $< -o $@
+
+run: $(EXEC)
+	@./$(EXEC)
+
+watch: $(BIN_SRCS)
+	@find $(SRC) -type f | entr -c $(MAKE) --no-print-directory all
+
+analyze:
+	$(CC) $(CFLAGS) $(ANALYZE_FLAGS) $(SRC)/$(NAME).c -o $(EXEC)
+
+test: $(BIN)/main $(BIN)/main_test
+	@$(BIN)/main_test
+
+test-watch:
+	@find $(SRC) -type f | entr -c $(MAKE) --no-print-directory test
 
 clean:
-	rm main
+	@$(RM) -r $(BIN)/*
 
-.PHONY = clean run hot analyze
+.PHONY = all run watch analyze test test-watch clean
